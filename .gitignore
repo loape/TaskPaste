@@ -1,0 +1,8 @@
+node_modules/
+dist/
+server/index.js
+*.tgz
+.DS_Store
+data/
+attachments/
+config/
