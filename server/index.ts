@@ -197,7 +197,18 @@ app.delete('/api/attachments/:id', handle((req,res) => {
 }));
 app.get('/api/settings', (_req,res) => { const c=modelConfig(); res.json({provider:c.provider,baseUrl:c.baseUrl,model:c.model,hasKey:Boolean(c.apiKey),dataDir,holidays:json(join(dataDir,'config/holidays.json'),[])}); });
 app.put('/api/settings/model', handle((req,res) => { const old=modelConfig(); const provider:ModelProvider=req.body.provider==='gemini-fastapi'?'gemini-fastapi':req.body.provider==='openai'?'openai':'deepseek'; let baseUrl:string; try { baseUrl=compatibleBaseUrl(String(req.body.baseUrl||old.baseUrl),provider); } catch { throw new Error('API Base URL 无效'); } const changedProvider=provider!==old.provider; const next:ModelConfig={provider,baseUrl,model:String(req.body.model||''),apiKey:req.body.removeKey?'':String(req.body.apiKey||(changedProvider?'':old.apiKey))}; if(!/^https?:\/\//.test(next.baseUrl)) throw new Error('API Base URL 无效'); writeFileSync(configPath,JSON.stringify(next,null,2),{mode:0o600}); chmodSync(configPath,0o600); res.json({provider:next.provider,baseUrl:next.baseUrl,model:next.model,hasKey:Boolean(next.apiKey)}); }));
-app.put('/api/settings/holidays', handle((req,res) => { if(!Array.isArray(req.body)) throw new Error('节日配置必须是数组'); const list=req.body.slice(0,200).map((h:Record<string,unknown>)=>({date:String(h.date||''),name:String(h.name||''),type:String(h.type||'personal')})); writeFileSync(join(dataDir,'config/holidays.json'),JSON.stringify(list,null,2)); res.json(list); }));
+app.put('/api/settings/holidays', handle((req,res) => {
+  if (!Array.isArray(req.body)) throw new Error('日期标签必须是数组');
+  const list=req.body.slice(0,200).map((h:Record<string,unknown>)=>{
+    const date=String(h.date||''),name=String(h.name||'').trim().slice(0,80),parsed=new Date(`${date}T12:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(parsed.getTime())||parsed.toISOString().slice(0,10)!==date||!name) throw new Error('日期标签需要有效日期和名称');
+    const type=['birthday','anniversary'].includes(String(h.type))?String(h.type):'personal';
+    const repeat=['solar','lunar'].includes(String(h.repeat))?String(h.repeat):'none';
+    return {id:/^[a-f0-9-]{36}$/.test(String(h.id||''))?String(h.id):randomUUID(),date,name,type,repeat};
+  });
+  writeFileSync(join(dataDir,'config/holidays.json'),JSON.stringify(list,null,2));
+  res.json(list);
+}));
 app.get('/api/ai/models', handle(async (_req,res) => { const c=modelConfig(); const response=await providerFetch(`${c.baseUrl}/models`,{headers:providerHeaders(c)},15000); if(!response.ok) throw new Error(await providerError(response,c.apiKey)); const body=await response.json() as {data?:Array<{id?:string}>}; res.json({models:(body.data||[]).map(item=>item.id).filter(Boolean)}); }));
 app.post('/api/ai/test', handle(async (_req,res) => {
   const c=modelConfig();

@@ -2,7 +2,7 @@ import schedule2025 from './holiday-schedules/2025.json';
 import schedule2026 from './holiday-schedules/2026.json';
 
 export type CalendarDayKind = 'holiday' | 'workday' | 'weekend' | 'weekday';
-export type PersonalDay = { date: string; name: string; type: string };
+export type PersonalDay = { id?: string; date: string; name: string; type: string; repeat?: 'none' | 'solar' | 'lunar' };
 
 type HolidaySchedule = { year: number; source: string; holidays: { name: string; start: string; end: string }[]; workdays: string[]; festivalDates: Record<string, string> };
 const schedules: Record<number, HolidaySchedule> = { 2025: schedule2025, 2026: schedule2026 };
@@ -52,7 +52,18 @@ export function calendarDay(date: Date, personalDays: PersonalDay[] = []) {
   const kind: CalendarDayKind = schedule?.workdays.includes(key) ? 'workday'
     : officialHoliday ? 'holiday'
     : date.getDay() === 0 || date.getDay() === 6 ? 'weekend' : 'weekday';
-  const personal = personalDays.filter(item => item.date === key);
+  const personal = personalDays.filter(item => {
+    if (item.date === key) return true;
+    if (date.getFullYear() < Number(item.date.slice(0, 4))) return false;
+    if (item.repeat === 'solar') return item.date.slice(5) === key.slice(5);
+    if (item.repeat === 'lunar') {
+      const original = new Date(`${item.date}T12:00:00`);
+      if (Number.isNaN(original.getTime())) return false;
+      const initialLunar = lunarParts(original);
+      return initialLunar.month === lunar.month && initialLunar.day === lunar.day;
+    }
+    return false;
+  });
   return {
     key,
     lunar: `${lunar.month}${lunarDayName(lunar.day)}`,

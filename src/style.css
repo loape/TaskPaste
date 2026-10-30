@@ -52,3 +52,32 @@
 :root[data-theme=dark] .days button.selected .day-sub{color:#fff}
 :root[data-theme=dark] .events-panel .event-row{color:#c5d4ee}
 :root[data-theme=dark] .events-panel .event-row:hover{background:#253b5b}
+
+.calendar-add-tag{display:flex;align-items:center;justify-content:center;gap:4px;width:100%;margin-top:9px;padding:6px 7px;border:1px dashed #b9cffa;border-radius:7px;background:#f8faff;color:#527fd0;font-size:11px;font-weight:600}
+.calendar-add-tag:hover{background:#eaf2ff;border-color:#85aaf0}
+.days button.has-personal::before{content:'♥';position:absolute;top:0;left:2px;font-size:8px;line-height:1;color:#d9739b}
+.days button.personal-anniversary::before{content:'✦';color:#9278d6}
+.days button.personal-personal::before{content:'●';color:#5ca6a0}
+.days button .day-sub.personal{color:#cf658e;font-weight:700}
+.days button.personal-anniversary .day-sub.personal{color:#8d72cc}
+.days button.personal-personal .day-sub.personal{color:#438f8a}
+.days button.selected.has-personal::before,.days button.selected .day-sub.personal{color:#fff}
+.events-panel .event-row>span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.events-panel .event-dot.birthday{background:#ffe7f0;color:#d66791}
+.events-panel .event-dot.anniversary{background:#eee9ff;color:#8c70d1}
+.events-panel .event-dot.personal{background:#e5f5f2;color:#4a9d94}
+.events-panel .event-row .event-tag{flex:none;border-radius:4px;padding:2px 3px;background:#f2f5fa;color:#8598b4;font-size:10px}
+.events-panel .event-row svg{flex:none;color:#a4b4cc}
+.calendar-settings-list{margin-top:9px;max-height:220px;overflow:auto}
+.calendar-settings-row{display:flex;align-items:center;gap:8px;width:100%;padding:8px 5px;background:transparent;border:0;border-bottom:1px solid #edf2f8;color:#526988;text-align:left;font-size:13px}
+.calendar-settings-row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.calendar-settings-row small{color:#8ca1bd;white-space:nowrap;font-size:11px}
+.calendar-settings-row:hover{background:#f5f8fd}
+:root[data-theme=dark] .calendar-add-tag{background:#1c304b;border-color:#45658e;color:#a9c8ff}
+:root[data-theme=dark] .calendar-add-tag:hover{background:#263e60}
+:root[data-theme=dark] .days button .day-sub.personal{color:#ffafd0}
+:root[data-theme=dark] .days button.personal-anniversary .day-sub.personal{color:#cebaff}
+:root[data-theme=dark] .days button.personal-personal .day-sub.personal{color:#a0e0d9}
+:root[data-theme=dark] .days button.selected .day-sub.personal{color:#fff}
+:root[data-theme=dark] .calendar-settings-row{color:#d9e6ff;border-color:#30415b}
+:root[data-theme=dark] .calendar-settings-row:hover{background:#263a58}

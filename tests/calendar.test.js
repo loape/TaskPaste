@@ -30,3 +30,12 @@ test('个人纪念日不改变休息状态', () => {
   assert.equal(info.festival, '圣诞节');
   assert.equal(info.kind, 'weekday');
 });
+
+test('生日标签可按公历或农历跨年重复，旧标签保持单次', () => {
+  const solar = { date: '2025-10-30', name: '妈妈', type: 'birthday', repeat: 'solar' };
+  const lunar = { date: '2025-10-06', name: '外婆', type: 'birthday', repeat: 'lunar' };
+  const once = { date: '2025-10-30', name: '旧纪念日', type: 'personal' };
+  assert.deepEqual(calendarDay(new Date('2026-10-30T12:00:00'), [solar, lunar, once]).personal.map(item => item.name), ['妈妈']);
+  assert.deepEqual(calendarDay(new Date('2026-09-25T12:00:00'), [solar, lunar, once]).personal.map(item => item.name), ['外婆']);
+  assert.equal(calendarDay(new Date('2026-10-31T12:00:00'), [solar, lunar]).personal.length, 0);
+});

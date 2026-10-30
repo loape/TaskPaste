@@ -91,6 +91,32 @@ test('任务和画布位置在服务重启后保留，备份包含任务', async
   }
 });
 
+test('日期标签可编辑并在重启与备份后保留重复方式', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'taskpaste-calendar-test-'));
+  const port = await freePort();
+  let processInfo;
+  try {
+    processInfo = await start(port, dir);
+    const created = await request(processInfo.url, '/settings/holidays', 'PUT', [{ date: '2025-10-06', name: '妈妈', type: 'birthday', repeat: 'lunar' }]);
+    assert.equal(created[0].repeat, 'lunar');
+    assert.ok(created[0].id);
+    const edited = await request(processInfo.url, '/settings/holidays', 'PUT', [{ ...created[0], name: '妈妈生日', repeat: 'solar' }]);
+    assert.equal(edited[0].id, created[0].id);
+    await stop(processInfo.child);
+    processInfo = await start(port, dir);
+    const settings = await request(processInfo.url, '/settings');
+    assert.equal(settings.holidays[0].name, '妈妈生日');
+    assert.equal(settings.holidays[0].repeat, 'solar');
+    const backup = await request(processInfo.url, '/export/backup');
+    assert.equal(backup.holidays[0].repeat, 'solar');
+    const removed = await request(processInfo.url, '/settings/holidays', 'PUT', []);
+    assert.deepEqual(removed, []);
+  } finally {
+    if (processInfo?.child.exitCode === null) await stop(processInfo.child);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('快捷入口可增删改查，删除默认入口后重启不会恢复', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ai-todo-shortcut-test-'));
   const port = await freePort();
