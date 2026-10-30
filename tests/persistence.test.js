@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { createServer as createHttpServer } from 'node:http';
+import { DatabaseSync } from 'node:sqlite';
 
 test('内置连接测试图片是完整有效的 PNG', () => {
   const png = readFileSync('server/vision-test.png');
@@ -60,8 +61,9 @@ test('任务和画布位置在服务重启后保留，备份包含任务', async
   let processInfo;
   try {
     processInfo = await start(port, dir);
-    const task = await request(processInfo.url, '/tasks', 'POST', { title: '持久化验证', priority: 'high', tags: ['测试'], source_name: '产品群', requested_by: '小王', assignee: '我', subtasks: [{ id: 'step-1', title: '确认需求', done: false }] });
+    const task = await request(processInfo.url, '/tasks', 'POST', { title: '持久化验证', category: 'work', priority: 'high', tags: ['测试'], source_name: '产品群', requested_by: '小王', assignee: '我', subtasks: [{ id: 'step-1', title: '确认需求', done: false }] });
     assert.equal(task.title, '持久化验证');
+    assert.equal(task.category, 'work');
     assert.equal(task.due_at.slice(0, 10), new Date().toISOString().slice(0, 10));
     await request(processInfo.url, `/tasks/${task.id}/layout`, 'PATCH', { x: 48, y: 64 });
     await stop(processInfo.child);
@@ -69,6 +71,7 @@ test('任务和画布位置在服务重启后保留，备份包含任务', async
     const tasks = await request(processInfo.url, '/tasks');
     assert.equal(tasks.length, 1);
     assert.equal(tasks[0].x, 48);
+    assert.equal(tasks[0].category, 'work');
     assert.deepEqual(tasks[0].tags, ['测试']);
     const moved = await request(processInfo.url, `/tasks/${task.id}`, 'PATCH', { status: 'in_progress' });
     assert.equal(moved.status, 'in_progress');
@@ -79,12 +82,34 @@ test('任务和画布位置在服务重启后保留，备份包含任务', async
     assert.equal(updated.subtasks[0].done, true);
     const backup = await request(processInfo.url, '/export/backup');
     assert.equal(backup.tasks[0].title, '持久化验证');
+    assert.equal(backup.tasks[0].category, 'work');
     assert.equal(backup.tasks[0].subtasks[0].done, true);
     await request(processInfo.url, '/import/backup', 'POST', backup);
     const restored = await request(processInfo.url, '/tasks');
     assert.equal(restored[0].status, 'in_progress');
+    assert.equal(restored[0].category, 'work');
     assert.equal(restored[0].source_name, '产品群');
     assert.equal(restored[0].subtasks[0].done, true);
+  } finally {
+    if (processInfo?.child.exitCode === null) await stop(processInfo.child);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('旧数据库升级后，已有任务默认归入其他类别', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'taskpaste-category-migration-'));
+  const port = await freePort();
+  let processInfo;
+  try {
+    processInfo = await start(port, dir);
+    const task = await request(processInfo.url, '/tasks', 'POST', { title: '旧任务' });
+    await stop(processInfo.child);
+    const database = new DatabaseSync(join(dir, 'data/ai-todo.sqlite'));
+    database.exec('ALTER TABLE task_details DROP COLUMN category');
+    database.close();
+    processInfo = await start(port, dir);
+    const tasks = await request(processInfo.url, '/tasks');
+    assert.equal(tasks.find(item => item.id === task.id)?.category, 'other');
   } finally {
     if (processInfo?.child.exitCode === null) await stop(processInfo.child);
     rmSync(dir, { recursive: true, force: true });
@@ -266,7 +291,7 @@ test('DeepSeek Flash 使用密钥、图片输入和 JSON 输出创建截图草�
     res.setHeader('Content-Type', 'application/json');
     if (req.url === '/models') return res.end(JSON.stringify({ data: [{ id: 'deepseek-flash', input_modalities: ['text', 'image'] }] }));
     if (req.url === '/chat/completions') {
-      if (payload.response_format) return res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ tasks: [{ title: '修复登录', description: '处理截图中的错误', source_name: '产品群', requested_by: '张三', assignee: '', priority: 'high', due_at: null, tags: ['Bug'], subtasks: ['复现', '修复'], ai_analysis: '', confidence: 0.85 }], recognized_text: '修复登录' }) } }] }));
+      if (payload.response_format) return res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ tasks: [{ title: '修复登录', description: '处理截图中的错误', category: 'work', source_name: '产品群', requested_by: '张三', assignee: '', priority: 'high', due_at: null, tags: ['Bug'], subtasks: ['复现', '修复'], ai_analysis: '', confidence: 0.85 }], recognized_text: '修复登录' }) } }] }));
       return res.end(JSON.stringify({ choices: [{ message: { content: '图片已收到' } }] }));
     }
     res.statusCode = 404; res.end('{}');
@@ -287,11 +312,14 @@ test('DeepSeek Flash 使用密钥、图片输入和 JSON 输出创建截图草�
     const imageId = (await upload.json())[0].id;
     const result = await request(processInfo.url, '/ai/analyze', 'POST', { imageIds: [imageId] });
     assert.equal(result.drafts[0].title, '修复登录');
+    assert.equal(result.drafts[0].category, 'work');
     assert.equal(result.drafts[0].source_name, '产品群');
     assert.ok(received.every(item => item.auth === 'Bearer test-secret'));
     const analysis = received.find(item => item.payload?.response_format);
     assert.equal(analysis.payload.model, 'deepseek-flash');
     assert.equal(analysis.payload.response_format.type, 'json_object');
+    assert.match(analysis.payload.messages[0].content[0].text, /学习路线/);
+    assert.match(analysis.payload.messages[0].content[0].text, /提醒类/);
     assert.equal(analysis.payload.messages[0].content[1].type, 'image_url');
   } finally {
     if (processInfo?.child.exitCode === null) await stop(processInfo.child);

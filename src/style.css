@@ -81,3 +81,14 @@
 :root[data-theme=dark] .days button.selected .day-sub.personal{color:#fff}
 :root[data-theme=dark] .calendar-settings-row{color:#d9e6ff;border-color:#30415b}
 :root[data-theme=dark] .calendar-settings-row:hover{background:#263a58}
+.form-grid.status-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.list-row{grid-template-columns:18px minmax(0,1fr) 42px 33px 70px 20px}
+.category-pill{display:inline-flex;align-items:center;justify-content:center;flex:none;width:max-content;border-radius:5px;padding:2px 6px;font-size:11px;font-weight:700;background:#edf1f7;color:#62738d}
+.category-pill.category-work{background:#e9f0ff;color:#4c73ba}
+.category-pill.category-learning{background:#e8f6f1;color:#248d73}
+.category-pill.category-reminder{background:#fff3e4;color:#b57a23}
+.card-pills .category-pill{font-size:11px;padding:2px 5px}
+.task-progress{height:4px;margin-top:5px;background:#e9eef7;border-radius:4px;overflow:hidden}
+.task-progress span{display:block;height:100%;background:#6193ea;border-radius:4px;transition:width .2s}
+.task-card:has(.category-learning) .task-progress span{background:#39ae8b}
+@media(max-width:700px){.form-grid.status-grid{grid-template-columns:1fr 1fr}.list-row{grid-template-columns:18px minmax(0,1fr) 42px 33px 20px}.list-row>span:nth-last-of-type(1){display:none}}
