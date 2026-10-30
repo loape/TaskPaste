@@ -12,3 +12,43 @@
 .shortcut-wrap .shortcut-item{padding-right:55px}.shortcut-item strong,.shortcut-item small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}.shortcut-edit,.shortcut-wrap .remove-shortcut{position:absolute;top:12px;width:22px;height:22px;display:grid;place-items:center;border:0;border-radius:5px;background:#f3f7ff;color:#6985b4;opacity:.75}.shortcut-edit{right:30px}.shortcut-wrap .remove-shortcut{right:5px}.shortcut-edit:hover,.shortcut-wrap .remove-shortcut:hover,.shortcut-edit:focus-visible,.shortcut-wrap .remove-shortcut:focus-visible{opacity:1;background:#e5efff;color:#3466bb}:root[data-theme=dark] .shortcut-edit,:root[data-theme=dark] .shortcut-wrap .remove-shortcut{background:#233552;color:#b2c8ed}
 
 .canvas-position{cursor:grab;touch-action:pan-y}.canvas-position.dragging{cursor:grabbing;user-select:none}.canvas-position button{cursor:pointer}.board-task .task-card{border-radius:8px}.board-task .card-body,.board-task .card-info,.board-task .card-footer{cursor:grab}
+
+/* Calendar: lunar date, festivals, official days off, and make-up workdays. */
+.calendar-panel .month-head{background:#f3f7ff;border:1px solid #e5edfc;border-radius:9px;padding:8px;margin-bottom:10px}
+.calendar-grid.weekday{margin-bottom:5px}.calendar-grid.weekday .weekend{color:#d88778}
+.calendar-grid.days{grid-auto-rows:43px;row-gap:3px;column-gap:2px}
+.days button{display:flex;align-items:center;justify-content:center;gap:3px;padding:3px 1px;line-height:1.1;border:1px solid transparent;transition:background .15s,border-color .15s}
+.days button:hover{background:#ecf3ff;border-color:#d8e6ff}
+.days button.day-weekend{background:#f4f8ff;color:#5579ae}
+.days button.day-holiday{background:#fff0ec;color:#c45e50}
+.days button.day-workday{background:#fff8e9;color:#916b30}
+.days button.outside{opacity:.48}
+.days button.selected,.days button.selected:hover{background:#5b90f5;border-color:#4f84e8;color:#fff;box-shadow:0 2px 7px #5b90f54a;opacity:1}
+.days button .date-number{font-size:13px;font-weight:700;line-height:1;padding:0}
+.days button.selected .date-number{background:transparent;border-radius:0;color:#fff;padding:0}
+.days button.today:not(.selected) .date-number{color:#377ae4}
+.days button .day-sub{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px;color:#899bb7;line-height:1.1}
+.days button .day-sub.festival{color:#d56557;font-weight:700}
+.days button.day-weekend .day-sub{color:#7d9bc5}
+.days button.selected .day-sub,.days button.selected .day-sub.festival{color:#fff}
+.days button .day-kind{position:absolute;top:1px;right:1px;font-size:8px;font-weight:700;line-height:1;color:#fff;border-radius:3px;padding:1px}
+.days button .day-kind.rest{background:#e58276}.days button.day-weekend .day-kind.rest{background:#86a7d6}.days button .day-kind.work{background:#dda848}
+.days button.selected .day-kind{background:#ffffff45}
+.days button i{bottom:0;left:calc(50% - 2px)}
+.calendar-legend{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-top:9px;color:#879ab6;font-size:10px}
+.calendar-legend span{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+.calendar-legend i{width:7px;height:7px;border-radius:2px}.calendar-legend .legend-rest{background:#e58276}.calendar-legend .legend-work{background:#dda848}.calendar-legend .legend-task{background:#5c93f7;border-radius:50%}
+.calendar-source{margin-top:5px;color:#9aabc2;font-size:10px;line-height:1.3}.calendar-source a{color:#7294ce;text-decoration:none}.calendar-source a:hover{text-decoration:underline}
+.events-panel .event-row{width:100%;border:0;background:transparent;color:#647b9d;text-align:left;cursor:pointer;margin:4px 0;padding:5px 3px;border-radius:6px}
+.events-panel .event-row:hover{background:#f1f6ff}.events-panel .event-row>span:nth-child(2){flex:1}.events-panel .event-row small{color:#df776b;font-size:10px}
+.events-panel .event-dot.personal{background:#ffe9f0;color:#cf6c91}
+:root[data-theme=dark] .calendar-panel .month-head{background:#203452;border-color:#304767}
+:root[data-theme=dark] .days button.day-weekend{background:#233956;color:#b5cbef}
+:root[data-theme=dark] .days button.day-holiday{background:#46313a;color:#ffd0c7}
+:root[data-theme=dark] .days button.day-workday{background:#423c2b;color:#f5d89e}
+:root[data-theme=dark] .days button.selected{background:#4679d3;color:#fff}
+:root[data-theme=dark] .days button .day-sub{color:#a4b6d3}
+:root[data-theme=dark] .days button .day-sub.festival{color:#ffb4a9}
+:root[data-theme=dark] .days button.selected .day-sub{color:#fff}
+:root[data-theme=dark] .events-panel .event-row{color:#c5d4ee}
+:root[data-theme=dark] .events-panel .event-row:hover{background:#253b5b}
