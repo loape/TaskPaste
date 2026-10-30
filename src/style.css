@@ -92,3 +92,8 @@
 .task-progress span{display:block;height:100%;background:#6193ea;border-radius:4px;transition:width .2s}
 .task-card:has(.category-learning) .task-progress span{background:#39ae8b}
 @media(max-width:700px){.form-grid.status-grid{grid-template-columns:1fr 1fr}.list-row{grid-template-columns:18px minmax(0,1fr) 42px 33px 20px}.list-row>span:nth-last-of-type(1){display:none}}
+.shortcut-icon img{display:block;width:100%;height:100%;object-fit:cover;border-radius:6px}
+.shortcut-image-picker{display:flex;align-items:center;gap:9px;margin:0 0 8px}
+.shortcut-image-picker .shortcut-icon.preview{width:38px;height:38px}
+.modal-body .shortcut-image-picker label.secondary{display:inline-flex;flex-direction:row;align-items:center;width:auto;margin:0;color:#6680a5;font-weight:500;cursor:pointer}
+.shortcut-image-picker button.secondary{height:36px}

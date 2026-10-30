@@ -27,9 +27,10 @@ db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'todo', priority TEXT NOT NULL DEFAULT 'medium', due_at TEXT, tags TEXT NOT NULL DEFAULT '[]', source_type TEXT NOT NULL DEFAULT 'manual', source_image_id TEXT, ai_analysis TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', urgent INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT, x REAL NOT NULL DEFAULT -1, y REAL NOT NULL DEFAULT -1, width REAL NOT NULL DEFAULT 260, height REAL NOT NULL DEFAULT 210);
 CREATE TABLE IF NOT EXISTS task_details (task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE, source_name TEXT NOT NULL DEFAULT '', requested_by TEXT NOT NULL DEFAULT '', assignee TEXT NOT NULL DEFAULT '', due_explicit INTEGER NOT NULL DEFAULT 0, subtasks TEXT NOT NULL DEFAULT '[]', category TEXT NOT NULL DEFAULT 'other');
 CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, path TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, recognized_text TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS shortcuts (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, target TEXT NOT NULL, icon TEXT NOT NULL DEFAULT 'link', sort_order INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS shortcuts (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, target TEXT NOT NULL, icon TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0, section TEXT NOT NULL DEFAULT 'launch');
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
 if (!(db.prepare('PRAGMA table_info(task_details)').all() as {name:string}[]).some(column => column.name === 'category')) db.exec("ALTER TABLE task_details ADD COLUMN category TEXT NOT NULL DEFAULT 'other'");
+if (!(db.prepare('PRAGMA table_info(shortcuts)').all() as {name:string}[]).some(column => column.name === 'section')) db.exec("ALTER TABLE shortcuts ADD COLUMN section TEXT NOT NULL DEFAULT 'launch'");
 if (!db.prepare("SELECT 1 FROM settings WHERE key='shortcuts_seeded_v1'").get()) {
   const defaults = [
     ['Codex','command','','⌘'],
@@ -43,7 +44,7 @@ if (!db.prepare("SELECT 1 FROM settings WHERE key='shortcuts_seeded_v1'").get())
   try {
     for (const [index, item] of defaults.entries()) {
       if (!db.prepare('SELECT 1 FROM shortcuts WHERE lower(name)=lower(?)').get(item[0])) {
-        db.prepare('INSERT INTO shortcuts VALUES (?,?,?,?,?,?)').run(randomUUID(),item[0],item[1],item[2],item[3],(index+1)*10);
+        db.prepare('INSERT INTO shortcuts (id,name,kind,target,icon,sort_order,section) VALUES (?,?,?,?,?,?,?)').run(randomUUID(),item[0],item[1],item[2],'',(index+1)*10,'launch');
       }
     }
     db.prepare("INSERT INTO settings (key,value) VALUES ('shortcuts_seeded_v1','1')").run();
@@ -158,18 +159,41 @@ app.patch('/api/tasks/:id/layout', handle((req, res) => {
   res.json(getTask(prior.id));
 }));
 app.delete('/api/tasks/:id', handle((req, res) => { const old = getTask(String(req.params.id)); if (!old) return res.status(404).json({ error: '任务不存在' }); db.prepare('DELETE FROM tasks WHERE id=?').run(String(req.params.id)); res.json(old); }));
-app.get('/api/shortcuts', (_req, res) => res.json(db.prepare('SELECT * FROM shortcuts ORDER BY sort_order, name').all()));
+const shortcutSection = (value: unknown) => value === 'tool' ? 'tool' : 'launch';
+function shortcutIcon(value: unknown) {
+  const icon = String(value || '').trim();
+  if (!icon || icon === 'link') return '';
+  if (!/^https?:\/\//i.test(icon) && !icon.startsWith('data:')) {
+    if (icon.length <= 20) return ''; // Older backups may contain emoji icons.
+    throw new Error('请填写 http(s) 图片 URL，或上传图片');
+  }
+  if (/^https?:\/\//i.test(icon)) {
+    const url = new URL(icon);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || icon.length > 2048) throw new Error('图片 URL 无效');
+    return icon;
+  }
+  const match = /^data:image\/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/]+={0,2})$/.exec(icon);
+  if (!match) throw new Error('图片仅支持 PNG、JPEG、WebP 或 GIF');
+  const bytes = Buffer.from(match[2], 'base64');
+  if (!bytes.length || bytes.length > 512 * 1024) throw new Error('图标图片不能超过 512 KB');
+  const hex = bytes.subarray(0, 12).toString('hex');
+  const valid = match[1] === 'png' ? hex.startsWith('89504e470d0a1a0a') : match[1] === 'jpeg' ? hex.startsWith('ffd8ff') : match[1] === 'gif' ? ['GIF87a','GIF89a'].includes(bytes.subarray(0,6).toString()) : hex.slice(0,8) === '52494646' && bytes.subarray(8,12).toString() === 'WEBP';
+  if (!valid) throw new Error('图片内容与格式不符');
+  return icon;
+}
+app.get('/api/shortcuts', (_req, res) => res.json(db.prepare('SELECT * FROM shortcuts ORDER BY section, sort_order, name').all()));
 app.post('/api/shortcuts', handle((req, res) => {
   const name = String(req.body.name || '').trim().slice(0, 80), kind = String(req.body.kind || 'web'), target = String(req.body.target || '').trim();
   if (!name || !['web','command'].includes(kind)) throw new Error('请填写有效的快捷入口');
   if (kind === 'web' && !/^https?:\/\//i.test(target)) throw new Error('网页链接需要以 http:// 或 https:// 开头');
   if (kind === 'command' && target && !target.startsWith('/')) throw new Error('本地命令需要填写可执行文件的绝对路径');
   const id = randomUUID();
-  const last=db.prepare('SELECT COALESCE(MAX(sort_order),0) AS value FROM shortcuts').get() as {value:number};
-  db.prepare('INSERT INTO shortcuts VALUES (?,?,?,?,?,?)').run(id,name,kind,target,String(req.body.icon || 'link').slice(0,20),req.body.sort_order===undefined?last.value+10:Number(req.body.sort_order)||0);
+  const section=shortcutSection(req.body.section);
+  const last=db.prepare('SELECT COALESCE(MAX(sort_order),0) AS value FROM shortcuts WHERE section=?').get(section) as {value:number};
+  db.prepare('INSERT INTO shortcuts (id,name,kind,target,icon,sort_order,section) VALUES (?,?,?,?,?,?,?)').run(id,name,kind,target,shortcutIcon(req.body.icon),req.body.sort_order===undefined?last.value+10:Number(req.body.sort_order)||0,section);
   res.status(201).json(db.prepare('SELECT * FROM shortcuts WHERE id=?').get(id));
 }));
-app.patch('/api/shortcuts/:id', handle((req, res) => { const prior = db.prepare('SELECT * FROM shortcuts WHERE id=?').get(String(req.params.id)) as Record<string, unknown> | undefined; if (!prior) return res.status(404).json({ error: '入口不存在' }); const next = { ...prior, ...req.body }; const name=String(next.name||'').trim(), target=String(next.target||'').trim(), kind=String(next.kind); if (!name || !['web','command'].includes(kind) || (kind==='web' ? !/^https?:\/\//i.test(target) : Boolean(target)&&!target.startsWith('/'))) throw new Error('入口配置无效'); db.prepare('UPDATE shortcuts SET name=?,kind=?,target=?,icon=?,sort_order=? WHERE id=?').run(name,kind,target,String(next.icon||'link').slice(0,20),Number(next.sort_order)||0,String(req.params.id)); res.json(db.prepare('SELECT * FROM shortcuts WHERE id=?').get(String(req.params.id))); }));
+app.patch('/api/shortcuts/:id', handle((req, res) => { const prior = db.prepare('SELECT * FROM shortcuts WHERE id=?').get(String(req.params.id)) as Record<string, unknown> | undefined; if (!prior) return res.status(404).json({ error: '入口不存在' }); const next = { ...prior, ...req.body }; const name=String(next.name||'').trim(), target=String(next.target||'').trim(), kind=String(next.kind); if (!name || !['web','command'].includes(kind) || (kind==='web' ? !/^https?:\/\//i.test(target) : Boolean(target)&&!target.startsWith('/'))) throw new Error('入口配置无效'); db.prepare('UPDATE shortcuts SET name=?,kind=?,target=?,icon=?,sort_order=?,section=? WHERE id=?').run(name,kind,target,shortcutIcon(next.icon),Number(next.sort_order)||0,shortcutSection(next.section),String(req.params.id)); res.json(db.prepare('SELECT * FROM shortcuts WHERE id=?').get(String(req.params.id))); }));
 app.delete('/api/shortcuts/:id', handle((req,res) => { db.prepare('DELETE FROM shortcuts WHERE id=?').run(String(req.params.id)); res.json({ok:true}); }));
 app.post('/api/shortcuts/:id/launch', handle((req,res) => {
   const item = db.prepare('SELECT * FROM shortcuts WHERE id=?').get(String(req.params.id)) as {kind:string;target:string}|undefined;
@@ -277,7 +301,7 @@ app.post('/api/ai/analyze', handle(async (req,res) => {
 app.get('/api/export/tasks', (_req,res) => { res.setHeader('Content-Disposition','attachment; filename="ai-todo-tasks.json"'); res.json({version:1,tasks:taskRows()}); });
 app.post('/api/import/tasks', handle((req,res) => { const tasks=req.body.tasks; if(!Array.isArray(tasks)) throw new Error('无效的任务 JSON'); let count=0; for(const raw of tasks.slice(0,5000)){ try{ const t=taskFields(raw); const id=randomUUID(),stamp=now(); db.prepare('INSERT INTO tasks (id,title,description,status,priority,due_at,tags,source_type,source_image_id,ai_analysis,notes,urgent,created_at,updated_at,completed_at,x,y,width,height) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,t.title,t.description,t.status,t.priority,t.due_at,t.tags,'import',null,t.ai_analysis,t.notes,t.urgent,stamp,stamp,null,-1,-1,260,210); saveTaskDetails(id,t); count++; }catch{} } res.json({count}); }));
 app.get('/api/export/backup', (_req,res) => { const files=readdirSync(join(dataDir,'attachments/screenshots')).map(name=>({name,data:readFileSync(join(dataDir,'attachments/screenshots',name)).toString('base64')})); const shortcuts=db.prepare('SELECT * FROM shortcuts').all(); const holidays=json(join(dataDir,'config/holidays.json'),[]); res.setHeader('Content-Disposition','attachment; filename="ai-todo-backup.json"'); res.json({version:1,createdAt:now(),tasks:taskRows(),shortcuts,holidays,attachments:db.prepare('SELECT * FROM attachments').all(),files}); });
-app.post('/api/import/backup', handle((req,res) => { const body=req.body; if(body.version!==1||!Array.isArray(body.tasks)||!Array.isArray(body.attachments)||!Array.isArray(body.files)) throw new Error('备份格式无效'); const snapshot=join(dataDir,'backups',`before-restore-${Date.now()}.json`); writeFileSync(snapshot,JSON.stringify({version:1,tasks:taskRows(),shortcuts:db.prepare('SELECT * FROM shortcuts').all(),holidays:json(join(dataDir,'config/holidays.json'),[]),attachments:db.prepare('SELECT * FROM attachments').all(),files:readdirSync(join(dataDir,'attachments/screenshots')).map(name=>({name,data:readFileSync(join(dataDir,'attachments/screenshots',name)).toString('base64')}))})); db.exec('BEGIN'); try {db.exec('DELETE FROM tasks; DELETE FROM attachments; DELETE FROM shortcuts;'); for(const t of body.tasks){ const v=taskFields(t); db.prepare('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(String(t.id),v.title,v.description,v.status,v.priority,v.due_at,v.tags,v.source_type,v.source_image_id,v.ai_analysis,v.notes,v.urgent,String(t.created_at||now()),String(t.updated_at||now()),t.completed_at||null,Number(t.x)||0,Number(t.y)||0,Number(t.width)||260,Number(t.height)||210); saveTaskDetails(String(t.id),v); } for(const a of body.attachments){ if(!/^attachments\/screenshots\/[a-f0-9-]+\.(png|jpg|webp|gif)$/.test(String(a.path))) throw new Error('附件路径无效'); db.prepare('INSERT INTO attachments VALUES (?,?,?,?,?,?)').run(String(a.id),String(a.path),String(a.mime),Number(a.size),String(a.recognized_text||''),String(a.created_at||now())); } for(const s of body.shortcuts||[]) db.prepare('INSERT INTO shortcuts VALUES (?,?,?,?,?,?)').run(String(s.id),String(s.name),String(s.kind),String(s.target),String(s.icon),Number(s.sort_order)||0); for(const f of body.files){ if(!/^[a-f0-9-]+\.(png|jpg|webp|gif)$/.test(String(f.name))) throw new Error('文件名无效'); writeFileSync(join(dataDir,'attachments/screenshots',f.name),Buffer.from(String(f.data),'base64')); } writeFileSync(join(dataDir,'config/holidays.json'),JSON.stringify(body.holidays||[])); db.exec('COMMIT'); }catch(e){db.exec('ROLLBACK');throw e;} res.json({ok:true,snapshot}); }));
+app.post('/api/import/backup', handle((req,res) => { const body=req.body; if(body.version!==1||!Array.isArray(body.tasks)||!Array.isArray(body.attachments)||!Array.isArray(body.files)) throw new Error('备份格式无效'); const snapshot=join(dataDir,'backups',`before-restore-${Date.now()}.json`); writeFileSync(snapshot,JSON.stringify({version:1,tasks:taskRows(),shortcuts:db.prepare('SELECT * FROM shortcuts').all(),holidays:json(join(dataDir,'config/holidays.json'),[]),attachments:db.prepare('SELECT * FROM attachments').all(),files:readdirSync(join(dataDir,'attachments/screenshots')).map(name=>({name,data:readFileSync(join(dataDir,'attachments/screenshots',name)).toString('base64')}))})); db.exec('BEGIN'); try {db.exec('DELETE FROM tasks; DELETE FROM attachments; DELETE FROM shortcuts;'); for(const t of body.tasks){ const v=taskFields(t); db.prepare('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(String(t.id),v.title,v.description,v.status,v.priority,v.due_at,v.tags,v.source_type,v.source_image_id,v.ai_analysis,v.notes,v.urgent,String(t.created_at||now()),String(t.updated_at||now()),t.completed_at||null,Number(t.x)||0,Number(t.y)||0,Number(t.width)||260,Number(t.height)||210); saveTaskDetails(String(t.id),v); } for(const a of body.attachments){ if(!/^attachments\/screenshots\/[a-f0-9-]+\.(png|jpg|webp|gif)$/.test(String(a.path))) throw new Error('附件路径无效'); db.prepare('INSERT INTO attachments VALUES (?,?,?,?,?,?)').run(String(a.id),String(a.path),String(a.mime),Number(a.size),String(a.recognized_text||''),String(a.created_at||now())); } for(const s of body.shortcuts||[]) db.prepare('INSERT INTO shortcuts (id,name,kind,target,icon,sort_order,section) VALUES (?,?,?,?,?,?,?)').run(String(s.id),String(s.name),String(s.kind),String(s.target),shortcutIcon(s.icon),Number(s.sort_order)||0,shortcutSection(s.section)); for(const f of body.files){ if(!/^[a-f0-9-]+\.(png|jpg|webp|gif)$/.test(String(f.name))) throw new Error('文件名无效'); writeFileSync(join(dataDir,'attachments/screenshots',f.name),Buffer.from(String(f.data),'base64')); } writeFileSync(join(dataDir,'config/holidays.json'),JSON.stringify(body.holidays||[])); db.exec('COMMIT'); }catch(e){db.exec('ROLLBACK');throw e;} res.json({ok:true,snapshot}); }));
 app.get('/api/storage', (_req,res) => { const sizes=(path:string):number => readdirSync(path,{withFileTypes:true}).reduce((sum,item)=>sum+(item.isDirectory()?sizes(join(path,item.name)):statSync(join(path,item.name)).size),0); res.json({bytes:sizes(dataDir),dataDir}); });
 app.post('/api/data-dir/open', (_req,res) => { const command=process.platform==='darwin'?'open':process.platform==='win32'?'explorer':'xdg-open'; execFile(command,[dataDir],error=>{if(error)console.error('打开数据目录失败:',error.message)}); res.json({ok:true}); });
 app.use('/api', (_req,res) => res.status(404).json({error:'接口不存在'}));

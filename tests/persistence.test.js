@@ -152,19 +152,54 @@ test('快捷入口可增删改查，删除默认入口后重启不会恢复', as
     assert.equal(initial.length, 6);
     const codex = initial.find(item => item.name === 'Codex');
     assert.equal(codex.target, '');
-    const edited = await request(processInfo.url, `/shortcuts/${codex.id}`, 'PATCH', { name: '我的 Codex', target: '/usr/bin/true', icon: '⌘' });
+    assert.equal(codex.section, 'launch');
+    const image = `data:image/png;base64,${readFileSync('tests/fixtures/ocr.png').toString('base64')}`;
+    const edited = await request(processInfo.url, `/shortcuts/${codex.id}`, 'PATCH', { name: '我的 Codex', target: '/usr/bin/true', icon: image });
     assert.equal(edited.name, '我的 Codex');
-    const created = await request(processInfo.url, '/shortcuts', 'POST', { name: '项目文档', kind: 'web', target: 'https://example.com/docs', icon: '📘' });
+    assert.equal(edited.icon, image);
+    const created = await request(processInfo.url, '/shortcuts', 'POST', { name: '项目文档', kind: 'web', target: 'https://example.com/docs', icon: 'https://example.com/icon.png' });
     assert.equal(created.name, '项目文档');
+    const tool = await request(processInfo.url, '/shortcuts', 'POST', { name: 'JSON 格式化', kind: 'web', target: 'https://example.com/json', section: 'tool', icon: image });
+    assert.equal(tool.section, 'tool');
+    const badIcon = await fetch(`${processInfo.url}/api/shortcuts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '坏图标', kind: 'web', target: 'https://example.com', icon: 'data:image/svg+xml;base64,PHN2Zy8+' }) });
+    assert.equal(badIcon.status, 400);
     const gemini = initial.find(item => item.name === 'Gemini');
     await request(processInfo.url, `/shortcuts/${gemini.id}`, 'DELETE');
     await stop(processInfo.child);
     processInfo = await start(port, dir);
     const remaining = await request(processInfo.url, '/shortcuts');
-    assert.equal(remaining.length, 6);
+    assert.equal(remaining.length, 7);
     assert.equal(remaining.some(item => item.name === 'Gemini'), false);
-    assert.equal(remaining.some(item => item.name === '我的 Codex' && item.target === '/usr/bin/true'), true);
-    assert.equal(remaining.some(item => item.name === '项目文档'), true);
+    assert.equal(remaining.some(item => item.name === '我的 Codex' && item.target === '/usr/bin/true' && item.icon === image), true);
+    assert.equal(remaining.some(item => item.name === '项目文档' && item.icon === 'https://example.com/icon.png'), true);
+    assert.equal(remaining.find(item => item.id === tool.id)?.section, 'tool');
+    const backup = await request(processInfo.url, '/export/backup');
+    assert.equal(backup.shortcuts.find(item => item.id === tool.id)?.icon, image);
+    await request(processInfo.url, '/import/backup', 'POST', backup);
+    const restored = await request(processInfo.url, '/shortcuts');
+    assert.equal(restored.find(item => item.id === tool.id)?.section, 'tool');
+    assert.equal(restored.find(item => item.id === tool.id)?.icon, image);
+  } finally {
+    if (processInfo?.child.exitCode === null) await stop(processInfo.child);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('旧版快捷入口升级后保留在快捷启动分组', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'taskpaste-shortcut-migration-'));
+  const port = await freePort();
+  let processInfo;
+  try {
+    processInfo = await start(port, dir);
+    const initial = await request(processInfo.url, '/shortcuts');
+    await stop(processInfo.child);
+    const database = new DatabaseSync(join(dir, 'data/ai-todo.sqlite'));
+    database.exec('ALTER TABLE shortcuts DROP COLUMN section');
+    database.close();
+    processInfo = await start(port, dir);
+    const migrated = await request(processInfo.url, '/shortcuts');
+    assert.equal(migrated.length, initial.length);
+    assert.ok(migrated.every(item => item.section === 'launch'));
   } finally {
     if (processInfo?.child.exitCode === null) await stop(processInfo.child);
     rmSync(dir, { recursive: true, force: true });
